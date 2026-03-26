@@ -5,6 +5,7 @@ import preprocessor
 import help
 import matplotlib.pyplot as plt
 import seaborn as sns
+sns.set_theme(style="darkgrid")
 st.sidebar.title("Whatsapp Chat Analyser")
 uploaded_file = st.sidebar.file_uploader("Choose a file")
 if uploaded_file is not None:
@@ -12,10 +13,13 @@ if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
     data = bytes_data.decode("utf-8")
     df = preprocessor.preprocess(data)
+    df = help.add_sentiment(df)
 
     # fetch unique user
     user_list = df['user'].unique().tolist()
-    user_list.remove('group_notification')
+    if 'group_notification' in user_list:
+           
+           user_list.remove('group_notification')
     user_list.sort()
     user_list.insert(0,"Overall")
 
@@ -76,11 +80,17 @@ if uploaded_file is not None:
             plt.xticks(rotation='vertical')
             st.pyplot(fig)
         st.title("Weekly Activity map")
-        user_heatmap = help.activity_heatmap(selected_user, df)
-        fig, ax = plt.subplots()
-        ax = sns.heatmap(user_heatmap)
-        st.pyplot(fig)
 
+        user_heatmap = help.activity_heatmap(selected_user, df)
+
+        if user_heatmap.empty:
+                
+                st.write("No activity data available for heatmap.")
+        else:
+               
+               fig, ax = plt.subplots()
+               sns.heatmap(user_heatmap, ax=ax)
+               st.pyplot(fig)
 
         # finding the busiest users in the group
         if selected_user == 'Overall':
@@ -128,3 +138,24 @@ if uploaded_file is not None:
             fig, ax = plt.subplots()
             ax.pie(emoji_df['Times used'].head(),labels=emoji_df['Emoji'].head(),autopct="%0.2f")
             st.pyplot(fig)
+        #sentiment analysis
+        st.title("Sentiment Analysis")
+
+        sentiment_counts = df['sentiment'].value_counts().reset_index()
+        sentiment_counts.columns = ['sentiment','count']
+
+        fig, ax = plt.subplots()
+
+        sns.barplot(
+        x='sentiment',
+        y='count',
+        data=sentiment_counts,
+        palette='viridis',
+        ax=ax
+)
+
+        ax.set_title("Sentiment Distribution in Chat")
+        ax.set_xlabel("Sentiment Type")
+        ax.set_ylabel("Number of Messages")
+
+        st.pyplot(fig)

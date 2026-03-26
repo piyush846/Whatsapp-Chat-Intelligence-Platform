@@ -1,5 +1,6 @@
 from urlextract import URLExtract
 from wordcloud import WordCloud
+from textblob import TextBlob
 import pandas as pd
 import emoji
 from collections import Counter
@@ -135,5 +136,32 @@ def activity_heatmap(selected_user,df):
     user_heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
 
     return user_heatmap
+
+def get_sentiment(message):
+    try:
+        message = str(message)
+
+        if message == "<Media omitted>\n":
+            return "Neutral"
+
+        analysis = TextBlob(message)
+        polarity = analysis.sentiment.polarity
+
+        if polarity > 0:
+            return "Positive"
+        elif polarity < 0:
+            return "Negative"
+        else:
+            return "Neutral"
+
+    except:
+        return "Neutral"
+
+
+def add_sentiment(df):
+
+    df["sentiment"] = df["message"].apply(get_sentiment)
+
+    return df
 
 
