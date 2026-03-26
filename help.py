@@ -34,48 +34,96 @@ def most_busy_users(df):
     df = round((df['user'].value_counts()/df.shape[0])*100,2).reset_index().rename(columns={'index':'name','user':'percent'})
     return x, df
 
-def create_wordcloud(selected_user,df):
-
-     if selected_user != 'Overall':
-         df =df[df['user'] == selected_user]
-
-     f = open('stop_hinglish.txt', 'r')
-     stop_words = f.read()
-
-     temp = df[df['user'] != 'group_notification']
-     temp = temp[temp['message'] != '<Media omitted>\n']
-
-     def remove_stopwords(message):
-         y = []
-         for word in message.lower().split():
-             if word not in stop_words:
-                 y.append(word)
-         return " ".join(y)
-
-
-     wc = WordCloud(width=500,height=500,min_font_size=10,background_color='white')
-     temp['message'] = temp['message'].apply(remove_stopwords)
-     df_wc = wc.generate(temp['message'].str.cat(sep=" "))
-     return df_wc
-
-def most_common_words(selected_user,df):
-
-    f = open('stop_hinglish.txt','r')
-    stop_words = f.read()
+def create_wordcloud(selected_user, df):
 
     if selected_user != 'Overall':
         df = df[df['user'] == selected_user]
 
-    temp = df[df['user'] != 'group_notification']
-    temp = temp[temp['message'] != '<Media omitted>\n']
+    # LEARN: read stop words as a SET of individual words (not one big string)
+    # set() makes lookups instant — checking "word in set" is O(1)
+    with open('stop_hinglish.txt', 'r') as f:
+        stop_words = set(f.read().split())
+
+    # WhatsApp system / junk words that slip through the chat
+    JUNK_WORDS = {
+        'media', 'omitted', 'deleted', 'message', 'null',
+        'missed', 'voice', 'call', 'video', 'image', 'gif',
+        'sticker', 'audio', 'document', 'joined', 'left',
+        'added', 'removed', 'changed', 'created', 'group',
+        'https', 'http', 'www', 'end-to-end', 'encrypted',
+        'tap', 'learn', 'more', 'waiting', 'messages',
+        'this', 'you', 'chat', 'https','http'
+    }
+
+    # Merge both sets — | is the union operator for sets
+    all_stop = stop_words | JUNK_WORDS
+
+    # Filter junk rows — catches ALL variants of media/system messages
+    temp = df[df['user'] != 'group_notification'].copy()
+    temp = temp[~temp['message'].str.contains(
+        'omitted|null|end-to-end|encrypted|missed voice|missed video',
+        case=False, na=False
+    )]
+
+    def clean_message(message):
+        words = []
+        for word in str(message).lower().split():
+            # Strip punctuation from word edges: "hello," → "hello"
+            clean = word.strip('.,!?()[]<>"\':;-_@#*/')
+            # Only keep if: not empty, not a junk word, longer than 1 char
+            if clean and clean not in all_stop and len(clean) > 1:
+                words.append(clean)
+        return " ".join(words)
+
+    temp = temp.copy()
+    temp['message'] = temp['message'].apply(clean_message)
+    temp = temp[temp['message'].str.strip() != '']
+
+    if temp.empty:
+        raise ValueError("Not enough text to generate a word cloud.")
+
+    wc = WordCloud(
+        width=800, height=400,
+        min_font_size=10,
+        background_color='white',
+        colormap='viridis',
+        max_words=150
+    )
+    df_wc = wc.generate(temp['message'].str.cat(sep=" "))
+    return df_wc
+
+def most_common_words(selected_user, df):
+
+    # Same fix as create_wordcloud — read as a SET not a raw string
+    with open('stop_hinglish.txt', 'r') as f:
+        stop_words = set(f.read().split())
+
+    JUNK_WORDS = {
+        'media', 'omitted', 'deleted', 'message', 'null',
+        'missed', 'voice', 'call', 'video', 'image', 'gif',
+        'sticker', 'audio', 'document', 'joined', 'left',
+        'added', 'removed', 'changed', 'created', 'group',
+        'https', 'http', 'www', 'end-to-end', 'encrypted',
+        'tap', 'learn', 'more', 'waiting', 'messages', 'chat'
+    }
+    all_stop = stop_words | JUNK_WORDS
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    temp = df[df['user'] != 'group_notification'].copy()
+    temp = temp[~temp['message'].str.contains(
+        'omitted|null|end-to-end|encrypted',
+        case=False, na=False
+    )]
 
     words = []
     for message in temp['message']:
-        for word in message.lower().split():
-            if word not in stop_words:
-                words.append(word)
+        for word in str(message).lower().split():
+            clean = word.strip('.,!?()[]<>"\':;-_@#*/')
+            if clean and clean not in all_stop and len(clean) > 1:
+                words.append(clean)
 
-    from collections import Counter
     most_common_df = pd.DataFrame(Counter(words).most_common(25))
     return most_common_df
 
@@ -163,5 +211,3 @@ def add_sentiment(df):
     df["sentiment"] = df["message"].apply(get_sentiment)
 
     return df
-
-

@@ -1,161 +1,111 @@
+"""
+app.py  —  WCA entry point
+---------------------------
+WHAT THIS FILE DOES:
+  This is the ONLY file Streamlit runs directly.
+  Its job is simple:
+    1. Show the file uploader in the sidebar
+    2. Parse the uploaded chat
+    3. Save the result to st.session_state
+       so ALL other pages can access it
+ 
+LEARN — What is st.session_state?
+  Normally every time you click anything in Streamlit,
+  the entire script re-runs from top to bottom.
+  session_state is a dictionary that SURVIVES those reruns.
+  Think of it as a shared memory between all your pages.
+"""
+
 import streamlit as st
-import re
-import pandas as pd
 import preprocessor
 import help
-import matplotlib.pyplot as plt
-import seaborn as sns
-sns.set_theme(style="darkgrid")
-st.sidebar.title("Whatsapp Chat Analyser")
-uploaded_file = st.sidebar.file_uploader("Choose a file")
-if uploaded_file is not None:
-    # To read file as bytes:
-    bytes_data = uploaded_file.getvalue()
-    data = bytes_data.decode("utf-8")
-    df = preprocessor.preprocess(data)
-    df = help.add_sentiment(df)
 
-    # fetch unique user
-    user_list = df['user'].unique().tolist()
-    if 'group_notification' in user_list:
-           
-           user_list.remove('group_notification')
-    user_list.sort()
-    user_list.insert(0,"Overall")
-
-    selected_user = st.sidebar.selectbox("Show analysis wrt to",user_list)
-
-    if st.sidebar.button('Show Analysis'):
-
-        num_messages,word,num_media_msg,links = help.fetch_stats(selected_user,df)
-        st.title('Top Statistics')
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.header("Total Messages")
-            st.title(num_messages)
-
-        with col2:
-            st.header("Total Words")
-            st.title(word)
-        with col3:
-            st.header('Media Shared')
-            st.title(num_media_msg)
-        with col4:
-            st.header('Links Shared')
-            st.title(links)
-        # Monthly Timeline
-        st.title('Monthly Timeline')
-        timeline = help.monthly_timeline(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(timeline['time'], timeline['message'],color='purple')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # Daily Timeline
-        st.title('Daily Timeline')
-        daily_timeline = help.daily(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(daily_timeline['date_only'], daily_timeline['message'],color='purple')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # Activity Map
-        st.title("Activity Map")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.header("Most Busy day")
-            busy_day = help.week_act_map(selected_user, df)
-            fig, ax = plt.subplots()
-            ax.bar(busy_day.index,busy_day.values,color='purple')
-            st.pyplot(fig)
-
-        with col2:
-            st.header("Most busy month")
-            busy_month = help.month_act_map(selected_user, df)
-            fig, ax = plt.subplots()
-            ax.bar(busy_month.index, busy_month.values,color='purple')
-            plt.xticks(rotation='vertical')
-            st.pyplot(fig)
-        st.title("Weekly Activity map")
-
-        user_heatmap = help.activity_heatmap(selected_user, df)
-
-        if user_heatmap.empty:
-                
-                st.write("No activity data available for heatmap.")
-        else:
-               
-               fig, ax = plt.subplots()
-               sns.heatmap(user_heatmap, ax=ax)
-               st.pyplot(fig)
-
-        # finding the busiest users in the group
-        if selected_user == 'Overall':
-            st.title("Most Busy Users")
-            x, newdf = help.most_busy_users(df)
-            fig, ax = plt.subplots()
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                ax.bar(x.index, x.values,color='purple')
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            with col2:
-                st.header("DataFrame")
-                st.dataframe(newdf)
-
-
-        # WordCloud
-        st.title('Word Cloud')
-        df_wc = help.create_wordcloud(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.imshow(df_wc)
-        st.pyplot(fig)
-
-        # Most Common words
-        st.title('Most Common words used in chat')
-        most_common_df = help.most_common_words(selected_user, df)
-
-        fig,ax = plt.subplots()
-        ax.bar(most_common_df[0],most_common_df[1])
-        plt.xticks(rotation ='vertical')
-        st.pyplot(fig)
-
-        #Emoji Analysis
-        st.title("Emoji Analysis")
-        emoji_df = help.emoji_helper(selected_user, df)
-
-        col1 , col2 = st.columns(2)
-
-        with col1:
-            st.dataframe(emoji_df)
-
-        with col2:
-            fig, ax = plt.subplots()
-            ax.pie(emoji_df['Times used'].head(),labels=emoji_df['Emoji'].head(),autopct="%0.2f")
-            st.pyplot(fig)
-        #sentiment analysis
-        st.title("Sentiment Analysis")
-
-        sentiment_counts = df['sentiment'].value_counts().reset_index()
-        sentiment_counts.columns = ['sentiment','count']
-
-        fig, ax = plt.subplots()
-
-        sns.barplot(
-        x='sentiment',
-        y='count',
-        data=sentiment_counts,
-        palette='viridis',
-        ax=ax
+# ── Page config (must be the FIRST streamlit call) ──────────────
+st.set_page_config(
+    page_title="ConvoIntel-Whatsapp Chat Intelligence",
+    page_icon="💬",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+#Sidebar
 
-        ax.set_title("Sentiment Distribution in Chat")
-        ax.set_xlabel("Sentiment Type")
-        ax.set_ylabel("Number of Messages")
+st.sidebar.title("ConvoIntel")
+st.sidebar.caption("Whatsapp Chat Intelligence")
+st.sidebar.divider()
 
-        st.pyplot(fig)
+uploaded_file = st.sidebar.file_uploader(
+    "Upload your Whatsapp Chat export",
+    type=["txt"],
+    help ="Export a chat from WhatsApp: Chat > More > Export Chat > Without Media" ,
+)
+ #Process the file when loaded
+if uploaded_file is not None: 
+    # Only re-process if it's a NEW file (check filename)
+    # LEARN: 'not in' checks if a key exists in the dict
+
+    if 'file_name' not in st.session_state or \
+    st.session_state.file_name !=uploaded_file.name:
+        try:
+            # Read bytes → decode to string → parse
+            raw_text = uploaded_file.getvalue().decode("utf-8")
+            df = preprocessor.preprocess(raw_text)
+            df = help.add_sentiment(df)
+
+   # Save everything to session_state
+                # LEARN: any page can now do st.session_state.df
+            st.session_state.df = df
+            st.session_state.file_name = uploaded_file.name
+            st.session_state.chat_info = preprocessor.get_chat_info(df)
+
+            st.sidebar.success(f"Loaded{len(df):,} messages !")
+
+        except ValueError as e:
+            st.sidebar.error(str(e))
+            st.stop()
+
+        # Show chat info in sidebar if data is loaded
+    if 'chat_info' in st.session_state:
+        info = st.session_state.chat_info
+        st.sidebar.divider()
+        st.sidebar.caption("Chat Summary")
+        st.sidebar.write(f"**Date range:** {info['date_range']}")
+        st.sidebar.write(f"**Messages:** {info['total_messages']:,}")
+        st.sidebar.write(f"**Participants:** {', '.join(info['users'])}")
+
+# ── Main page content (shown when no file is uploaded) ───
+if 'df' not in st.session_state:
+    # Welcome screen
+    st.title("💬 WhatsApp Chat Intelligence")
+    st.subheader("Turn your chats into insights")
+ 
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("📊 **Dashboard**\nTimelines, activity maps, word clouds")
+    with col2:
+        st.info("🤖 **AI Assistant**\nAsk questions about your chat")
+    with col3:
+        st.info("📈 **User Analysis**\nSentiment, response times, emoji stats")
+ 
+    st.divider()
+    st.markdown("### How to export your WhatsApp chat")
+    st.markdown("""
+    1. Open any WhatsApp chat on your phone
+    2. Tap the three dots (⋮) → **More** → **Export chat**
+    3. Choose **Without Media**
+    4. Save the `.txt` file and upload it above
+    """)
+else:
+    # If data is loaded, show a mini dashboard on the home page
+    st.title("💬 WhatsApp Chat Intelligence")
+    info = st.session_state.chat_info
+    df   = st.session_state.df
+ 
+    st.success(f"Chat loaded: **{st.session_state.file_name}**")
+ 
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total messages", f"{info['total_messages']:,}")
+    col2.metric("Participants",   len(info['users']))
+    col3.metric("Date range",     info['date_range'].split('→')[0].strip())
+    col4.metric("Media messages", f"{df['is_media'].sum():,}")
+ 
+    st.info("Use the sidebar to navigate to Dashboard, AI Assistant, and more.")
